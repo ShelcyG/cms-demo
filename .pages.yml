@@ -8,9 +8,16 @@ content:
     path: content/blogs
     type: collection
     fields:
-      - { name: title,  label: Title,   type: string }
-      - { name: date,   label: Date,    type: date }
-      - { name: body,   label: Content, type: rich-text }
+      - { name: title,            label: Title,            type: string }
+      - { name: date,             label: Publish Date,     type: date }
+      - { name: author,           label: Author Name,      type: string }
+      - { name: author_initials,  label: Author Initials,  type: string }
+      - { name: cover_image,      label: Cover Image,      type: image }
+      - { name: excerpt,          label: Excerpt / Intro,  type: text }
+      - { name: body,             label: Content,          type: rich-text }
+      - { name: meta_description, label: Meta Description, type: text }
+      - { name: meta_image,       label: Meta/OG Image,    type: image }
+      - { name: meta_keywords,    label: Meta Keywords,    type: string }
 
   - name: photos
     label: Photos
