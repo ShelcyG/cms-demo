@@ -1,106 +1,183 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CMS Demo Site</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9f9f7; color: #1a1a1a; line-height: 1.6; }
+// ─────────────────────────────────────────────
+//  CHANGE THESE TWO LINES TO YOUR REPO DETAILS
+// ─────────────────────────────────────────────
+const REPO   = 'ShelcyG/cms-demo'; 
+const BRANCH = 'main';
+// ─────────────────────────────────────────────
 
-    nav { background: #fff; border-bottom: 1px solid #e8e8e8; padding: 0 24px; display: flex; align-items: center; height: 60px; }
-    .nav-logo { font-size: 18px; font-weight: 600; color: #1a1a1a; text-decoration: none; }
+const API = `https://api.github.com/repos/${REPO}/contents`;
 
-    .page-wrap { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
-    .section-heading { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #888; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 1px solid #e8e8e8; }
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return res.json();
+}
 
-    /* Blog listing */
-    #blogs { display: flex; flex-direction: column; gap: 32px; margin-bottom: 64px; }
+function parseFrontMatter(text) {
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const fields = {};
+  if (match) {
+    match[1].split('\n').forEach(line => {
+      const colon = line.indexOf(':');
+      if (colon === -1) return;
+      const key = line.slice(0, colon).trim();
+      const val = line.slice(colon + 1).trim().replace(/^["']|["']$/g, '');
+      if (key) fields[key] = val;
+    });
+  }
+  fields.body = text.replace(/^---[\s\S]*?---\r?\n?/, '').trim();
+  return fields;
+}
 
-    .blog-card { background: #fff; border: 1px solid #e8e8e8; border-radius: 12px; overflow: hidden; transition: box-shadow 0.15s; cursor: pointer; }
-    .blog-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+function mdToHtml(md) {
+  if (!md) return '';
+  return md
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,     '<em>$1</em>')
+    .replace(/^- (.+)$/gm,    '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
+    .split(/\n{2,}/)
+    .map(block => {
+      if (/^<[hul]/.test(block.trim())) return block;
+      return `<p>${block.trim()}</p>`;
+    })
+    .join('\n')
+    .replace(/<p><\/p>/g, '');
+}
 
-    .card-cover { width: 100%; height: 240px; overflow: hidden; }
-    .card-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+function formatDate(str) {
+  if (!str) return '';
+  const d = new Date(str);
+  if (isNaN(d)) return str;
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
 
-    .card-body { padding: 24px; }
-    .card-title { font-size: 22px; font-weight: 700; color: #1a1a1a; margin-bottom: 12px; line-height: 1.3; }
+function getInitials(str) {
+  if (!str) return '?';
+  return str.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+}
 
-    .card-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-    .avatar { width: 32px; height: 32px; border-radius: 50%; background: #e8e4fc; color: #5a45c8; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .author-name { font-size: 14px; font-weight: 500; color: #333; }
-    .dot { color: #bbb; }
-    .post-date { font-size: 13px; color: #888; }
-    .card-excerpt { font-size: 15px; color: #555; line-height: 1.6; }
+// ── Show single post ──────────────────────────
+function showPost(post) {
+  document.getElementById('listing-view').style.display = 'none';
+  const view = document.getElementById('post-view');
+  view.style.display = 'block';
 
-    /* Single post */
-    .single-post { max-width: 720px; margin: 0 auto; display: none; }
-    .post-cover { width: 100%; height: 380px; overflow: hidden; border-radius: 12px; margin-bottom: 32px; }
-    .post-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .post-title { font-size: 32px; font-weight: 700; color: #1a1a1a; line-height: 1.25; margin-bottom: 16px; }
-    .post-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
-    .post-meta .avatar { width: 40px; height: 40px; font-size: 14px; }
-    .meta-text { display: flex; flex-direction: column; gap: 2px; }
-    .meta-text .author-name { font-size: 14px; font-weight: 500; }
-    .meta-text .post-date { font-size: 13px; color: #888; }
+  const initials = getInitials(post.author_initials || post.author);
+  const coverHtml = post.cover_image
+    ? `<div class="post-cover"><img src="${post.cover_image}" alt="${post.title || ''}"></div>`
+    : '';
 
-    .post-body { font-size: 17px; line-height: 1.75; color: #222; }
-    .post-body h1, .post-body h2, .post-body h3 { font-weight: 700; margin: 2em 0 0.6em; color: #111; }
-    .post-body h1 { font-size: 26px; } .post-body h2 { font-size: 22px; } .post-body h3 { font-size: 18px; }
-    .post-body p { margin-bottom: 1.2em; }
-    .post-body ul, .post-body ol { margin: 0 0 1.2em 1.5em; }
-    .post-body li { margin-bottom: 0.4em; }
-    .post-body strong { font-weight: 600; }
-    .post-body a { color: #5a45c8; }
-    .post-body img { max-width: 100%; border-radius: 10px; margin: 24px 0; display: block; }
+  document.getElementById('single-post-content').innerHTML = `
+    <div class="single-post" style="display:block">
+      ${coverHtml}
+      <h1 class="post-title">${post.title || 'Untitled'}</h1>
+      <div class="post-meta">
+        <div class="avatar">${initials}</div>
+        <div class="meta-text">
+          <span class="author-name">${post.author || ''}</span>
+          <span class="post-date">${formatDate(post.date)}</span>
+        </div>
+      </div>
+      <div class="post-body">${mdToHtml(post.body)}</div>
+    </div>`;
 
-    .back-btn { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 32px; font-size: 14px; color: #5a45c8; background: none; border: none; cursor: pointer; padding: 0; }
-    .back-btn:hover { text-decoration: underline; }
+  window.scrollTo(0, 0);
+}
 
-    /* Photos */
-    #photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-    .photo-card { background: #fff; border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; }
-    .photo-card img { width: 100%; height: 180px; object-fit: cover; display: block; }
-    .photo-caption { padding: 10px 12px; font-size: 13px; color: #555; }
+// ── Go back to listing ────────────────────────
+function showListing() {
+  document.getElementById('post-view').style.display = 'none';
+  document.getElementById('listing-view').style.display = 'block';
+  window.scrollTo(0, 0);
+}
 
-    .empty-msg { font-size: 14px; color: #aaa; padding: 24px 0; }
-    .loading { font-size: 14px; color: #aaa; padding: 24px 0; }
+// ── Load and render blog posts ────────────────
+async function loadBlogs() {
+  const el = document.getElementById('blogs');
 
-    #listing-view { display: block; }
+  const files = await fetchJSON(`${API}/content/blogs?ref=${BRANCH}`);
+  if (!files || !Array.isArray(files)) {
+    el.innerHTML = '<p class="empty-msg">No posts yet. Add one in Pages CMS!</p>';
+    return;
+  }
 
-    @media (max-width: 600px) {
-      .post-title { font-size: 24px; }
-      .post-cover { height: 220px; }
-      .card-cover { height: 180px; }
-      .card-title { font-size: 18px; }
-    }
-  </style>
-</head>
-<body>
+  const mdFiles = files.filter(f => f.name.endsWith('.md'));
+  if (mdFiles.length === 0) {
+    el.innerHTML = '<p class="empty-msg">No posts yet. Add one in Pages CMS!</p>';
+    return;
+  }
 
-  <nav>
-    <a href="#" class="nav-logo" onclick="showListing()">My Demo Site</a>
-  </nav>
+  const posts = await Promise.all(mdFiles.map(async f => {
+    const file = await fetchJSON(f.url);
+    if (!file || !file.content) return null;
+    const text = atob(file.content.replace(/\n/g, ''));
+    return parseFrontMatter(text);
+  }));
 
-  <div class="page-wrap">
+  const sorted = posts
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-    <!-- LISTING VIEW -->
-    <div id="listing-view">
-      <p class="section-heading">Latest Posts</p>
-      <div id="blogs"><p class="loading">Loading posts…</p></div>
+  el.innerHTML = sorted.map((p, i) => {
+    const initials = getInitials(p.author_initials || p.author);
+    const cover = p.cover_image
+      ? `<div class="card-cover"><img src="${p.cover_image}" alt="${p.title || ''}"></div>`
+      : '';
+    const excerpt = p.excerpt || p.body.replace(/<[^>]+>/g, '').slice(0, 160) + '…';
 
-      <p class="section-heading" style="margin-top:48px">Photos</p>
-      <div id="photos"><p class="loading">Loading photos…</p></div>
-    </div>
+    return `
+      <article class="blog-card" onclick='showPost(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
+        ${cover}
+        <div class="card-body">
+          <h2 class="card-title">${p.title || 'Untitled'}</h2>
+          <div class="card-meta">
+            <div class="avatar">${initials}</div>
+            <span class="author-name">${p.author || ''}</span>
+            <span class="dot">·</span>
+            <span class="post-date">${formatDate(p.date)}</span>
+          </div>
+          <p class="card-excerpt">${excerpt}</p>
+        </div>
+      </article>`;
+  }).join('');
+}
 
-    <!-- SINGLE POST VIEW -->
-    <div id="post-view" style="display:none">
-      <button class="back-btn" onclick="showListing()">← Back to all posts</button>
-      <div class="single-post" id="single-post-content"></div>
-    </div>
+// ── Load and render photos ────────────────────
+async function loadPhotos() {
+  const el = document.getElementById('photos');
+  if (!el) return;
 
-  </div>
+  const files = await fetchJSON(`${API}/content/photos?ref=${BRANCH}`);
+  if (!files || !Array.isArray(files)) {
+    el.innerHTML = '<p class="empty-msg">No photos yet.</p>';
+    return;
+  }
 
-  <script src="load-content.js"></script>
-</body>
-</html>
+  const mdFiles = files.filter(f => f.name.endsWith('.md'));
+  if (mdFiles.length === 0) {
+    el.innerHTML = '<p class="empty-msg">No photos yet.</p>';
+    return;
+  }
+
+  const items = await Promise.all(mdFiles.map(async f => {
+    const file = await fetchJSON(f.url);
+    if (!file || !file.content) return null;
+    const text = atob(file.content.replace(/\n/g, ''));
+    return parseFrontMatter(text);
+  }));
+
+  el.innerHTML = items.filter(Boolean).map(p => `
+    <div class="photo-card">
+      <img src="${p.image || ''}" alt="${p.caption || p.title || ''}">
+      <p class="photo-caption">${p.caption || p.title || ''}</p>
+    </div>`).join('');
+}
+
+loadBlogs();
+loadPhotos();
